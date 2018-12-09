@@ -4,4 +4,3 @@ y = y + randn(1, 200);
 
 %% LDA
 [labels, theta, beta, zd] = tslda(y, 3);
-unique(labels)

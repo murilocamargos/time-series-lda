@@ -81,10 +81,11 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
     % quantas palavras de cada existem em cada documento
     numberOfDocs = ceil(length(words)/p.Results.NumWordsPerDoc);
     wordCount = zeros(numberOfDocs, p.Results.NumWords);
-    for d = 1:p.Results.NumWordsPerDoc:length(words)
-        wordsInDocD = d:min(d + p.Results.NumWordsPerDoc - 1, ...
+    for d = 1:numberOfDocs
+        indexIni = (d - 1) * p.Results.NumWordsPerDoc + 1;
+        indexEnd = min(indexIni + p.Results.NumWordsPerDoc - 1, ...
             length(p.Results.TimeSeries));
-        wordsInDocD = tabulate(words(wordsInDocD));
+        wordsInDocD = tabulate(words(indexIni:indexEnd));
         wordCount(d, wordsInDocD(:, 1)) = wordsInDocD(:, 2);
     end
 
@@ -121,17 +122,16 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
         % Computa um novo gamma para cada tópico com base na ocorrência das
         % palavras em cada tópico
         for k = 1:p.Results.NumTopics
-            new_gamma = sum(wordCount(zd(:, i-1) == ...
-                p.Results.NumTopics, :)) + gamma;
-            beta(:, k, i) = dirrnd(new_gamma, 1);
+            newGamma = sum(wordCount(zd(:, i-1) == k, :)) + gamma;
+            beta(:, k, i) = dirrnd(newGamma, 1);
         end
 
         % Reamostra os tópicos Zd com base nos vetores de thetas e betas
         for d = 1:numberOfDocs
-            probs = [];
+            probs = zeros(1, p.Results.NumTopics);
             for k = 1:p.Results.NumTopics
-                probs = [probs log(theta(k, i)) + wordCount(d, :) * ...
-                    log(beta(:, k, i))];
+                probs(k) = log(theta(k, i)) + wordCount(d, :) * ...
+                    log(beta(:, k, i));
             end
 
             probs = exp(probs);
@@ -175,7 +175,6 @@ function w = fuzzify(y, form, num)
         rules = [ones(num, 1) * sigma, centers];
     elseif strcmp('tri', form)
         rules = [centers - center_size, centers, centers + center_size];
-        rules = min(max(rules, limits(1)), limits(2));
     end
     
     mdegree = zeros(length(y), num);
