@@ -1,46 +1,46 @@
 function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
-% TSLDA  Utilização do modelo Alocação Latente de Dirichlet (LDA, do inglês
-% Latent Dirichlet Allocation) para agrupamento de séries temporais.
+%% TSLDA Uses the Latent Dirichlet Allocation (LDA) to grupo a fuzzy time
+% series.
 %
-% Entradas
-% ========
+% Inputs
+% ======
 %   Required  TimeSeries      <array <numeric>>
-%     A série temporal a ser agrupada
+%     The time-series to be clustered.
 %   Required  NumTopics       <integer>
-%     O número de grupos que se espera encontrar na série
+%     The number of topics you expect to find.
 %   Optional  FuzzyForm       <string>
-%     A forma fuzzy com que se deseja fuzzificar a série temporal
+%     The fuzzy form used to fuzzify the time-series.
 %     Options: gauss (default), tri
 %   Optional  NumWords        <integer>
-%     O número de palavras ou regras fuzzy que se deseja obter
+%     The numer of fuzzy words you wish to use.
 %     Default: 5
 %   Optional  NumWordsPerDoc  <integer>
-%     O número de palavras que se terá em cada documento
+%     The number of words per document.
 %     Default: 10
 %   Optional  Iterations      <integer>
-%     O número de iterações para o amostrador de Gibbs
+%     Maximum number of iterations of the Gibbs sampler.
 %     Default: 300
 %   Optional  Alpha           <array <numeric>>
-%     Um vetor com valores de alpha para cada tópico ou um valor único que
-%     será replicado para todos os tópicos
+%     A vector with alpha values for each topic or a single value that
+%     will be replicated for all topics.
 %     Default: 0.1
 %   Optional  Gamma           <array <numeric>>
-%     Um vetor com valores de gamma para cada palavra ou um valor único que
-%     será replicado para todos as palavras
+%     A vector with gammas values for each topic or a single value that
+%     will be replicated for all topics.
 %     Default: 0.1
 %
-% Saídas
-% ======
+% Outputs
+% =======
 %   labels <array <integer>>
-%     Rótulos encontrados para cada valor da série
+%     Labels found for each measurement.
 %   theta  <array <numeric>>
-%     Thetas encontrados pelo amostrador de Gibbs em cada instante
+%     Estimated thetas for each instant.
 %   beta   <array <numeric>>
-%     Betas encontrados pelo amostrador de Gibbs em cada instante
+%     Estimated betas for each instant.
 %   zd     <array <integer>>
-%     Zds encontrados pelo amostrador de Gibbs em cada instante
+%     Estimated zds for each instant.
 
-    %% Validação dos parâmetros do modelo
+    %% Parameter validation
     validPositiveInteger = @(x) isnumeric(x) && mod(x, 1) == 0 && (x > 0);
     validPositiveNumeric = @(x) isnumeric(x) && all(x > 0);
     validFuzzyForms = @(x) any(strcmp({'gauss', 'tri'}, x));
@@ -56,7 +56,7 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
     addOptional(p, 'Gamma', 0.1, validPositiveNumeric);
     parse(p, TimeSeries, NumTopics, varargin{:});
 
-    % Valida o vetor de inicial de alphas caso seja fornecido
+    % Validates the initial vector of alphas if provided
     alpha = p.Results.Alpha;
     if length(alpha) == 1
         alpha = ones(1, p.Results.NumTopics) * alpha;
@@ -64,7 +64,7 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
         error('The alpha vector should have the same size of the amount of topics.')
     end
 
-    % Valida o vetor de inicial de gammas caso seja fornecido
+    % Validates the initial vector of gammas if provided
     gamma = p.Results.Gamma;
     if length(gamma) == 1
         gamma = ones(1, p.Results.NumWords) * gamma;
@@ -72,13 +72,13 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
         error('The gamma vector should have the same size of the amount of words.')
     end
 
-    %% Tranformação da série temporal
-    % Fuzzifica série de entrada formando o universo de discurso
+    %% Time-series transformation
+    % Fuzzyfies the input series
     words = fuzzify(p.Results.TimeSeries, p.Results.FuzzyForm, ...
         p.Results.NumWords);
 
-    % Divide palavras do dicionário em documentos de tamanho igual e conta
-    % quantas palavras de cada existem em cada documento
+    % Divides the dictionary words in document of equal size and counts
+    % how mny words there is in each one of them
     numberOfDocs = ceil(length(words)/p.Results.NumWordsPerDoc);
     wordCount = zeros(numberOfDocs, p.Results.NumWords);
     for d = 1:numberOfDocs
@@ -89,14 +89,14 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
         wordCount(d, wordsInDocD(:, 1)) = wordsInDocD(:, 2);
     end
 
-    %% Inicialização dos parâmetros do modelo LDA
-    % O vetor de thetas é dado pela amostra de uma Dirichlet com parametros
-    % alpha
+    %% Initializes the LDA parameters
+    % The theta vector is given by a sample of the Dirichlet distribution
+    % with parameters alpha
     theta = zeros(p.Results.NumTopics, p.Results.Iterations + 1);
     theta(:, 1) = dirrnd(alpha, 1);
 
-    % A matriz de betas é dado por amostras de uma Dirichlet com parametros
-    % gamma
+    % The beta matrix is given by a sample of the Dirichlet distribution
+    % with parameters gamma
     beta = zeros(p.Results.NumWords, p.Results.NumTopics, ...
         p.Results.Iterations + 1);
     beta(:, 1, 1) = dirrnd(gamma, 1);
@@ -104,29 +104,29 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
         beta(:, i, 1) = dirrnd(gamma, 1);
     end
 
-    % O vetor inicial dos tópicos dos documentos é dado pela distribuição
-    % multinomial cujo parâmetro é uma distribuição uniforma, inicialmente.
+    % The initial vector of document topics is given by the multinomial
+    % distribution with parameters following a uniform distribution.
     zd = zeros(numberOfDocs, p.Results.Iterations+1);
     zd(:, 1) = randsample(p.Results.NumTopics, numberOfDocs, true);
 
-    %% Amostrados de Gibbs
+    %% Gibbs sampler
     for i = 2:p.Results.Iterations+1
-        % O novo vetor de alphas que servirá como parâmetro para a nova
-        % amostragem dos thetas depende da proporção de tópicos atuais.
+        % The new alpha vector that will be used as parameters to sample
+        % the thetas depende on the current topic proportional
         newAlpha = alpha;
         topicCount = tabulate(zd(:, i-1));
         newAlpha(topicCount(:, 1)) = newAlpha(topicCount(:, 1)) + ...
             topicCount(:, 2)';
         theta(:, i) = dirrnd(newAlpha, 1);
 
-        % Computa um novo gamma para cada tópico com base na ocorrência das
-        % palavras em cada tópico
+        % Compute a new gamma for each topic using the word cound on each
+        % topic
         for k = 1:p.Results.NumTopics
             newGamma = sum(wordCount(zd(:, i-1) == k, :)) + gamma;
             beta(:, k, i) = dirrnd(newGamma, 1);
         end
 
-        % Reamostra os tópicos Zd com base nos vetores de thetas e betas
+        % Resample the topics Zd using the theta and beta vectors
         for d = 1:numberOfDocs
             probs = zeros(1, p.Results.NumTopics);
             for k = 1:p.Results.NumTopics
@@ -150,8 +150,8 @@ function [labels, theta, beta, zd] = tslda(TimeSeries, NumTopics, varargin)
 end
 
 function d = dirrnd(thetas, n)
-%% Esta função amostra de uma distribuição de Dirichlet utilizando o
- % amostrador da distribuição gama.
+%% DIRRND This function samples from a Dirichlet distribution using the
+% gamma distribution sampler.
  
     k = length(thetas);
     p = zeros(n, k);
@@ -162,9 +162,8 @@ function d = dirrnd(thetas, n)
 end
 
 function w = fuzzify(y, form, num)
-%% Esta função fuzzifica a série temporal criando um universo de discurso
- % em que as `num` regras fuzzy de forma `form` igualmente espaçadas são
- % utilizadas.
+%% FUZZIFY This functino fuzzifies a time-series where a fixed number of
+% fuzzy rules equaly spaced are used.
  
     limits = [floor(min(y)), ceil(max(y))];
     centers = linspace(min(limits), max(limits), num)';
